@@ -17,7 +17,7 @@ import glob
 # -- file paths --
 long_description="""NoisyKnn: Python implementation of Noisy-KNN"""
 setup(
-    name='noisy_knn',
+    name='noisyknn',
     version='0.0.0',
     description='A python implementation of Noisy-KNN',
     long_description=long_description,
