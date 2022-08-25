@@ -1,4 +1,12 @@
 
+# -- linalg --
+import numpy as np
+import torch as th
+from einops import rearrange,repeat
+
+# -- io --
+from pathlib import Path
+
 # -- plotting --
 import matplotlib
 matplotlib.use("agg")
@@ -31,7 +39,12 @@ def compare_psnr_vs_pme(records,sname):
     ax = [ax]
 
     # -- aggregate  --
+    print(records.columns)
+    print(records['psnrs'])
+    records_agg = records.groupby(["seed"]).mean()
+    print(records_agg.columns)
     records_agg = records.groupby(["k","seed"]).mean()
+    print(records_agg.columns)
     psnrs_agg = records_agg['psnrs'].to_numpy()
     pmin,pmax = psnrs_agg.min().item(),psnrs_agg.max().item()
 
@@ -94,9 +107,10 @@ def compare_psnr_vs_pme(records,sname):
     # cs = ax[0].scatter(pme_clean,psnrs,c='k')
     # cs = ax[1].scatter(pme_clean,psnrs,c=colors[names])
     # cs = ax[1].plot(pme_clean,pme,'x')
-    if sname == "real": title,x = "Real-World Motion [Set8]",0.44
-    elif sname == "sim": title,x = "Simulated Global Motion [1ppf]",0.44
-    else: raise ValueError(f"Uknown sname [{sname}]")
+    # if sname == "real": title,x = "Real-World Motion [Set8]",0.44
+    # elif sname == "sim": title,x = "Simulated Global Motion [1ppf]",0.44
+    # else: raise ValueError(f"Uknown sname [{sname}]")
+    title,x = "Hi",0.44
     ax[0].set_title(title,fontsize=FSIZE_B,x=x)
     ax[0].set_xlabel("Patch Matching Error",fontsize=FSIZE_B)
     ax[0].set_ylabel("PSNR",fontsize=FSIZE_B)
@@ -121,7 +135,7 @@ def compare_psnr_vs_pme(records,sname):
     # ax[0].add_artist(leg2)
 
     # -- save --
-    path = Path("/home/gauenk/Documents/packages/eccv2020/output/not_only_deno")
+    path = Path("/home/gauenk/Documents/packages/noisy_knn/output/not_only_deno")
     if not path.exists(): path.mkdir()
     save_name = "scatter_%s" % sname
     fn = "not_only_deno_%s.png" % save_name

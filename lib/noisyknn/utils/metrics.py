@@ -26,4 +26,14 @@ def compute_psnrs(clean,deno,div=255.):
         psnrs.append(psnr_ti)
     return np.array(psnrs)
 
+def compute_patch_psnrs(patches,ref,div=255.):
+    k = patches.shape[0]
+    patches = patches.detach().cpu().numpy()
+    ref = ref.detach().cpu().numpy()
+    psnrs = []
+    for ki in range(k):
+        psnr_ki = comp_psnr(patches[ki], ref[0], data_range=div)
+        psnrs.append(psnr_ki)
+    return np.array(psnrs)
+
 

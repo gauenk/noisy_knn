@@ -29,6 +29,8 @@ from noisyknn.flow import run as run_flow
 
 # -- main function --
 from noisyknn.not_only_deno import run as run_nod
+from noisyknn.not_only_deno import save_example
+from noisyknn.not_only_deno import compare_psnr_vs_pme
 from noisyknn.utils import io
 
 # -- vision --
@@ -45,7 +47,7 @@ def run_exp(cfg):
     #
 
     # -- load video --
-    clean = load_vid(cfg)
+    clean = load_vid(cfg)/255.
 
     # -- rescale --
     clean = apply_scale(clean,cfg.scale)
@@ -54,7 +56,7 @@ def run_exp(cfg):
     clean = apply_motion(clean,cfg.motion,cfg.exp_nframes)
 
     # -- get noisy --
-    noisy = clean + cfg.sigma * th.randn_like(clean)
+    noisy = clean + cfg.sigma/255. * th.randn_like(clean)
 
     # -- compute flows --
     flows = run_flow(clean,cfg.sigma)
@@ -73,6 +75,8 @@ def run_exp(cfg):
     #
 
     # -- formating --
+    print(type(psnrs))
+    print(psnrs)
     results = edict()
     results.image = image.cpu().numpy()
     results.psnrs = psnrs
@@ -142,21 +146,21 @@ def main():
     vid_name = ["motorbike"]
 
     # -- (2) Create Mesh of Experiments --
-    nreps = 1
+    nreps = 3
     seed = list(np.arange(nreps))
     # k = [2,10,50]
     k = [10]
     lams = [0.]
-    islice = ["s1"]
     scale = [0.5]
     sigma = [30.]
     tgt_sigma = [15.]#,1.5]
     # motion = ["none","1","5"]
-    motion = ["none"]
+    # motion = ["none"]
+    motion = ["1"]
 
     # -- long-range motion --
     exp_grid = {"sigma":sigma,"dname":dname,"vid_name":vid_name,
-                "islice":islice,"seed":seed,"k":k,"lams":lams,
+                "seed":seed,"k":k,"lams":lams,
                 "tgt_sigma":tgt_sigma,"scale":scale,
                 "motion":motion,"exp_nframes":[3]}
     exps = cache_io.mesh_pydicts(exp_grid) # create mesh
@@ -190,11 +194,12 @@ def main():
     # records = records[records['tgt_sigma'] > 2]
 
     # -- (5) Report PSNR v.s PME --
-    for sname,sdf in records.groupby("data_version"):
-        if sname == "v1": sname = "sim"
-        elif sname == "v2": sname = "real"
-        else: raise ValueError(f"Uknown sname [{sname}]")
-        io.save_burst(sdf,cfg.save_dir,"deno")
+    for sname,sdf in records.groupby("motion"):
+        # if sname == "v1": sname = "sim"
+        # elif sname == "v2": sname = "real"
+        # else: raise ValueError(f"Uknown sname [{sname}]")
+        print(sname,sdf.columns)
+        # io.save_burst(sdf,cfg.save_dir,"deno")
         save_example(sdf,sname)
         compare_psnr_vs_pme(sdf,sname)
 

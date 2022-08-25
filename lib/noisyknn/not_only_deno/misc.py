@@ -47,6 +47,31 @@ def get_3d_inds(inds,h,w):
 
     return aug_inds
 
+# OLD CODE!
+def compute_pme(patches,m_inds):
+    # -- pm error [clean values from new inds] --
+    m_inds = rearrange(m_inds,'(t h w) k tr -> t h w k tr',t=t,h=h,w=w)
+    pm_error = th.zeros(ntotal)
+    for ti in range(t):
+        for hi in range(h):
+            for wi in range(w):
+
+                inds_i = m_inds[ti,hi,wi]
+                cpatches_b = get_at_index(patches,inds_i)
+
+                ref = cpatches_b[[0]]
+                gpatches = cpatches_b[1:]
+
+                # error_b = compute_patch_psnrs(gpatches,ref,1.).mean().item()
+                error_b = th.mean((gpatches - ref)**2,(1,2))
+                if ti == 0 and hi == 0 and wi == 0:
+                    print(error_b)
+                error_b = (-10*th.log10(error_b)).mean()
+
+                raster_id = get_raster_id([ti,hi,wi],h,w)
+                pm_error[raster_id] = error_b
+    pme = pm_error.mean().item()
+    return pme
 
 #-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 #
