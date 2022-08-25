@@ -20,13 +20,13 @@ def rslice(vid,coords):
         coords = coords.type(th.int)
         coords = list(coords.cpu().numpy())
     fs,fe,t,l,b,r = coords
-    return vid[fs:fe,:,t:b,l:r]
+    return vid[fs:fe,:,t:b,l:r].contiguous()
 
 def slice_flows(flows,t_start,t_end):
     if flows is None: return flows
     flows_t = edict()
-    flows_t.fflow = flows.fflow[t_start:t_end]
-    flows_t.bflow = flows.bflow[t_start:t_end]
+    flows_t.fflow = flows.fflow[t_start:t_end].contiguous()
+    flows_t.bflow = flows.bflow[t_start:t_end].contiguous()
     return flows_t
 
 

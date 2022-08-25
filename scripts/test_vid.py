@@ -16,6 +16,8 @@ from easydict import EasyDict as edict
 # -- data --
 import data_hub
 
+# -- svnlb --
+# import svnlb # old optical flow
 
 # -- caching results --
 import cache_io
@@ -27,7 +29,7 @@ import noisyknn.utils.gpu_mem as gpu_mem
 from noisyknn.flow import run as run_flow
 from noisyknn.utils.metrics import compute_psnrs
 from noisyknn.utils.metrics import compute_ssims
-from noisyknn.utils.misc import set_seed,optional,rslice,slice_flows
+from noisyknn.utils.misc import set_seed,optional,rslice
 
 def run_exp(cfg):
 
@@ -51,17 +53,35 @@ def run_exp(cfg):
     results.timer_deno = []
 
     # -- data --
-    data,loaders = data_hub.sets.load(cfg)
-    groups = data.te.groups
-    indices = [i for i,g in enumerate(groups) if cfg.vid_name in g]
+    # data,loaders = data_hub.sets.load(cfg)
+    # groups = data.te.groups
+    # indices = [i for i,g in enumerate(groups) if cfg.vid_name in g]
+    # imax = 255.
 
     # -- optional filter --
-    frame_start = optional(cfg,"frame_start",0)
-    frame_end = optional(cfg,"frame_end",0)
-    if frame_start >= 0 and frame_end > 0:
-        def fbnds(fnums,lb,ub): return (lb <= np.min(fnums)) and (ub >= np.max(fnums))
-        indices = [i for i in indices if fbnds(data.te.paths['fnums'][groups[i]],
-                                               cfg.frame_start,cfg.frame_end)]
+    # frame_start = optional(cfg,"frame_start",0)
+    # frame_end = optional(cfg,"frame_end",0)
+    # if frame_start >= 0 and frame_end > 0:
+    #     def fbnds(fnums,lb,ub): return (lb <= np.min(fnums)) and (ub >= np.max(fnums))
+    #     indices = [i for i in indices if fbnds(data.te.paths['fnums'][groups[i]],
+    #                                            cfg.frame_start,cfg.frame_end)]
+
+    imax = 255.
+    path = "../svnlb/data/davis_baseball_64x64/"
+    fnums = 3
+    vid = data_hub.videos.read_rgb_video(path,fnums,"%05d","jpg")
+    indices = [0]
+    set_seed(cfg.seed)
+    noisy = np.random.normal(vid.copy(),scale=cfg.sigma).astype(np.float32)
+    vid = th.from_numpy(vid).contiguous()
+    noisy = th.from_numpy(noisy).contiguous()
+    # noisy = vid + cfg.sigma * th.randn_like(vid)
+    # noisy = noisy.contiguous()
+    sample = {"region":None,"noisy":noisy,"clean":vid,"fnums":fnums}
+    data = edict()
+    data.te = [sample]
+    print(vid.shape)
+
 
     for index in indices:
 
@@ -90,16 +110,19 @@ def run_exp(cfg):
         batch_size = 32*1024
 
         # -- optical flow --
-        timer.start("flow")
-        if cfg.flow == "true":
-            flows = run_flow(noisy,cfg.sigma)
-        else:
-            t,c,h,w = noisy.shape
-            zflow = th.zeros((t,2,h,w),device=cfg.device,dtype=th.float32)
-            flows = edict()
-            flows.fflow = zflow
-            flows.bflow = zflow
-        timer.stop("flow")
+        with timer("flow"):
+            if cfg.flow == "true":
+                # noisy_np = noisy.cpu().numpy()
+                # flows = svnlb.compute_flow(noisy_np,cfg.sigma)
+                # flows = edict({k:th.from_numpy(v).to(cfg.device)
+                #                for k,v in flows.items()})
+                flows = run_flow(noisy,cfg.sigma)
+            else:
+                t,c,h,w = noisy.shape
+                zflow = th.zeros((t,2,h,w),device=cfg.device,dtype=th.float32)
+                flows = edict()
+                flows.fflow = zflow
+                flows.bflow = zflow
 
         # -- pack params --
         batch_size = 10**8#256#85*1024#390*100
@@ -107,12 +130,11 @@ def run_exp(cfg):
         params.batch_size = batch_size
 
         # -- denoise --
-        timer.start("deno")
-        with th.no_grad():
-            deno = vnlb.run(noisy,cfg.sigma,flows)
-        timer.stop("deno")
-        mem_alloc,mem_res = model.mem_alloc,model.mem_res
-        # mem_alloc,mem_res = gpu_mem.print_peak_gpu_stats(False,"val",reset=True)
+        gpu_mem.print_peak_gpu_stats(False,"val",reset=True)
+        with timer("deno"):
+            with th.no_grad():
+                deno,basic = vnlb.run(noisy,cfg.sigma,flows,params)
+        mem_alloc,mem_res = gpu_mem.print_peak_gpu_stats(False,"val",reset=True)
 
         # -- save example --
         out_dir = Path(cfg.saved_dir) / str(cfg.uuid)
@@ -122,6 +144,11 @@ def run_exp(cfg):
         noisy_psnrs = compute_psnrs(noisy,clean,div=imax)
         psnrs = compute_psnrs(deno,clean,div=imax)
         ssims = compute_ssims(deno,clean,div=imax)
+        print("Noisy: ",noisy_psnrs)
+        print("Deno: ",psnrs)
+        basic_psnrs = compute_psnrs(basic,clean,div=imax)
+        print("Basic: ",basic_psnrs)
+
 
         # -- append results --
         results.psnrs.append(psnrs)
@@ -182,7 +209,7 @@ def main():
     cache_dir = ".cache_io"
     cache_name = "test_rgb_net" # current!
     cache = cache_io.ExpCache(cache_dir,cache_name)
-    # cache.clear()
+    cache.clear()
 
     # -- get mesh --
     # dnames = ["toy"]
@@ -192,10 +219,13 @@ def main():
     dnames = ["set8"]
     vid_names = ["sunflower","snowboard","tractor","motorbike",
                  "hypersmooth","park_joy","rafting","touchdown"]
-    # vid_names = ["tractor"]
-    sigmas = [50,30,10]#,30,10]
+    vid_names = ["sunflower"]
+    # dnames = ["davis"]
+    # vid_names = ["baseball"]
+    # sigmas = [50,30,10]#,30,10]
+    sigmas = [50]
     # ws,wt = [29],[0]
-    ws,wt = [15],[5]
+    ws,wt = [29],[3]
     flow = ["true"]
     isizes = ["none"]#,"512_512","256_256"]
     # isizes = ["156_156"]#"256_256"]
@@ -207,11 +237,12 @@ def main():
 
     # -- alt search --
     exp_lists['ws'] = [29]
-    exp_lists['wt'] = [0]
+    exp_lists['wt'] = [3]
     exp_lists['flow'] = ["false"]
+
     # exp_lists['model_type'] = ["refactored"]
     exps_b = cache_io.mesh_pydicts(exp_lists) # create mesh
-    exps = exps_a + exps_b
+    exps = exps_a# + exps_b
 
     # -- defaults --
     # exp_lists['ws'] = [29]
@@ -224,7 +255,8 @@ def main():
     # -- group with default --
     cfg = default_cfg()
     cfg.seed = 123
-    cfg.nframes = 0
+    cfg.nframes = 3
+    cfg.isize = "128_128"
     cfg.frame_start = 0
     cfg.frame_end = cfg.frame_start + cfg.nframes - 1
     cfg.frame_end = 0 if cfg.frame_end < 0 else cfg.frame_end
@@ -264,7 +296,7 @@ def main():
 
     # -- print by dname,sigma --
     for dname,ddf in records.groupby("dname"):
-        for cflow,fdf in adf.groupby("flow"):
+        for cflow,fdf in ddf.groupby("flow"):
             for ws,wsdf in fdf.groupby("ws"):
                 for wt,wtdf in wsdf.groupby("wt"):
                     for sigma,sdf in wtdf.groupby("sigma"):
